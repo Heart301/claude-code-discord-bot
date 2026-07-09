@@ -10,6 +10,19 @@ export interface DiscordContext {
   messageId?: string;
 }
 
+type PermissionOverrideMode = "dangerous" | "auto" | "bypass";
+
+// CLAUDE_PERMISSION_MODE lets an operator skip the per-tool-call Discord
+// approval flow entirely. Unset (the default) keeps every tool call routed
+// through the discord-permissions MCP server for manual approval.
+function getPermissionOverrideMode(): PermissionOverrideMode | undefined {
+  const value = process.env.CLAUDE_PERMISSION_MODE?.toLowerCase();
+  if (value === "dangerous" || value === "auto" || value === "bypass") {
+    return value;
+  }
+  return undefined;
+}
+
 export function buildClaudeCommand(
   workingDir: string,
   prompt: string,
@@ -17,7 +30,7 @@ export function buildClaudeCommand(
   discordContext?: DiscordContext
 ): string {
   const escapedPrompt = escapeShellString(prompt);
-  const mcpConfigJson = JSON.stringify(buildMcpConfig(discordContext));
+  const overrideMode = getPermissionOverrideMode();
 
   const commandParts = [
     `cd ${workingDir}`,
@@ -30,16 +43,28 @@ export function buildClaudeCommand(
     "-p",
     escapedPrompt,
     "--verbose",
+  ];
+
+  if (overrideMode === "dangerous") {
+    commandParts.push("--dangerously-skip-permissions");
+  } else if (overrideMode === "auto") {
+    commandParts.push("--permission-mode", "auto");
+  } else if (overrideMode === "bypass") {
+    commandParts.push("--permission-mode", "bypassPermissions");
+  } else {
     // Claude Code 2.x accepts the MCP config inline as a JSON string; the
     // permission server is reached over HTTP directly (no stdio bridge).
-    "--mcp-config",
-    escapeShellString(mcpConfigJson),
-    "--strict-mcp-config",
-    "--permission-prompt-tool",
-    "mcp__discord-permissions__approve_tool",
-    "--allowedTools",
-    "mcp__discord-permissions",
-  ];
+    const mcpConfigJson = JSON.stringify(buildMcpConfig(discordContext));
+    commandParts.push(
+      "--mcp-config",
+      escapeShellString(mcpConfigJson),
+      "--strict-mcp-config",
+      "--permission-prompt-tool",
+      "mcp__discord-permissions__approve_tool",
+      "--allowedTools",
+      "mcp__discord-permissions"
+    );
+  }
 
   if (sessionId) {
     commandParts.splice(3, 0, "--resume", sessionId);
