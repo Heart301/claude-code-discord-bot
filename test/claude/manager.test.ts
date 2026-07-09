@@ -344,6 +344,100 @@ describe('ClaudeManager', () => {
     });
   });
 
+  describe('tool call message merging', () => {
+    let mockChannel: any;
+
+    beforeEach(() => {
+      mockChannel = { send: vi.fn() };
+      manager.setDiscordMessage('channel-1', { channel: mockChannel });
+    });
+
+    function toolUseMessage(tools: Array<{ id: string; name: string; input?: any }>) {
+      return {
+        type: 'assistant',
+        session_id: 'session-1',
+        message: {
+          content: tools.map((t) => ({ type: 'tool_use', id: t.id, name: t.name, input: t.input || {} })),
+        },
+      } as any;
+    }
+
+    function toolResultMessage(results: Array<{ tool_use_id: string; content: string; is_error?: boolean }>) {
+      return {
+        type: 'user',
+        session_id: 'session-1',
+        message: {
+          content: results.map((r) => ({
+            type: 'tool_result',
+            tool_use_id: r.tool_use_id,
+            content: r.content,
+            is_error: r.is_error,
+          })),
+        },
+      } as any;
+    }
+
+    it('sends a single message for multiple tool_use calls in one assistant reply', async () => {
+      const sentMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      mockChannel.send.mockResolvedValue(sentMessage);
+
+      await (manager as any).handleAssistantMessage(
+        'channel-1',
+        toolUseMessage([
+          { id: 'tool-1', name: 'Read', input: { file_path: 'foo.ts' } },
+          { id: 'tool-2', name: 'Bash', input: { command: 'ls' } },
+        ])
+      );
+
+      expect(mockChannel.send).toHaveBeenCalledTimes(1);
+      const sentEmbed = mockChannel.send.mock.calls[0][0].embeds[0];
+      expect(sentEmbed.data.description).toContain('⏳ 🔧 Read (file_path=foo.ts)');
+      expect(sentEmbed.data.description).toContain('⏳ 🔧 Bash (command=ls)');
+    });
+
+    it('updates only the affected line when a tool result arrives, without sending a new message', async () => {
+      const sentMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      mockChannel.send.mockResolvedValue(sentMessage);
+
+      await (manager as any).handleAssistantMessage(
+        'channel-1',
+        toolUseMessage([
+          { id: 'tool-1', name: 'Read', input: { file_path: 'foo.ts' } },
+          { id: 'tool-2', name: 'Bash', input: { command: 'ls' } },
+        ])
+      );
+
+      await (manager as any).handleToolResultMessage(
+        'channel-1',
+        toolResultMessage([{ tool_use_id: 'tool-1', content: 'file contents' }])
+      );
+
+      expect(mockChannel.send).toHaveBeenCalledTimes(1);
+      expect(sentMessage.edit).toHaveBeenCalledTimes(1);
+      const updatedDescription = sentMessage.edit.mock.calls[0]![0].embeds[0].data.description;
+      expect(updatedDescription).toContain('✅ 🔧 Read (file_path=foo.ts)');
+      expect(updatedDescription).toContain('⏳ 🔧 Bash (command=ls)');
+    });
+
+    it('marks a tool as failed with ❌ when the result is an error', async () => {
+      const sentMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      mockChannel.send.mockResolvedValue(sentMessage);
+
+      await (manager as any).handleAssistantMessage(
+        'channel-1',
+        toolUseMessage([{ id: 'tool-1', name: 'Bash', input: { command: 'false' } }])
+      );
+
+      await (manager as any).handleToolResultMessage(
+        'channel-1',
+        toolResultMessage([{ tool_use_id: 'tool-1', content: 'command failed', is_error: true }])
+      );
+
+      const updatedDescription = sentMessage.edit.mock.calls[0]![0].embeds[0].data.description;
+      expect(updatedDescription).toContain('❌ 🔧 Bash (command=false)');
+    });
+  });
+
   describe('database integration', () => {
     it('should initialize database and cleanup old sessions on construction', () => {
       // The cleanupOldSessions call happens during construction, so we need to check
