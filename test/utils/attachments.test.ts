@@ -123,3 +123,71 @@ describe('AttachmentStore.downloadAttachments', () => {
     expect(result.paths).toEqual(['/tmp/claude-discord-bot/chan-1/msg-1-passwd']);
   });
 });
+
+describe('AttachmentStore.cleanupChannel', () => {
+  let store: AttachmentStore;
+
+  beforeEach(() => {
+    store = new AttachmentStore();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('removes the directory created for a channel', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }));
+    await store.downloadAttachments('chan-1', 'msg-1', [
+      { url: 'https://cdn.discordapp.com/a.png', name: 'a.png', size: 10 },
+    ]);
+
+    store.cleanupChannel('chan-1');
+
+    expect(fs.rmSync).toHaveBeenCalledWith('/tmp/claude-discord-bot/chan-1', {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it('is a no-op for a channel with no downloaded attachments', () => {
+    expect(() => store.cleanupChannel('unknown-channel')).not.toThrow();
+    expect(fs.rmSync).not.toHaveBeenCalled();
+  });
+
+  it('does not call rmSync twice for the same channel', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }));
+    await store.downloadAttachments('chan-1', 'msg-1', [
+      { url: 'https://cdn.discordapp.com/a.png', name: 'a.png', size: 10 },
+    ]);
+
+    store.cleanupChannel('chan-1');
+    store.cleanupChannel('chan-1');
+
+    expect(fs.rmSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows errors thrown by rmSync', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }));
+    (fs.rmSync as any).mockImplementation(() => {
+      throw new Error('busy');
+    });
+    await store.downloadAttachments('chan-1', 'msg-1', [
+      { url: 'https://cdn.discordapp.com/a.png', name: 'a.png', size: 10 },
+    ]);
+
+    expect(() => store.cleanupChannel('chan-1')).not.toThrow();
+  });
+});
