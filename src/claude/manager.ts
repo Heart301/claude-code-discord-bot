@@ -6,10 +6,17 @@ import type { SDKMessage } from "../types/index.js";
 import { buildClaudeCommand, type DiscordContext } from "../utils/shell.js";
 import { DatabaseManager } from "../db/database.js";
 
+type ToolCallEntry = {
+  message: any;
+  label: string;
+  status: "pending" | "success" | "error";
+  siblingIds: string[];
+};
+
 export class ClaudeManager {
   private db: DatabaseManager;
   private channelMessages = new Map<string, any>();
-  private channelToolCalls = new Map<string, Map<string, { message: any, toolId: string }>>();
+  private channelToolCalls = new Map<string, Map<string, ToolCallEntry>>();
   private channelNames = new Map<string, string>();
   private channelProcesses = new Map<
     string,
@@ -299,40 +306,24 @@ export class ClaudeManager {
         await channel.send({ embeds: [assistantEmbed] });
       }
       
-      // If there are tool uses, send a message for each tool
-      for (const tool of toolUses) {
-        let toolMessage = `🔧 ${tool.name}`;
+      // If there are tool uses, merge them into a single message for this reply
+      if (toolUses.length > 0) {
+        const labels = toolUses.map((tool: any) => this.buildToolLabel(channelId, tool));
+        const siblingIds = toolUses.map((tool: any) => tool.id);
 
-        if (tool.input && Object.keys(tool.input).length > 0) {
-          const inputs = Object.entries(tool.input)
-            .map(([key, value]) => {
-              let val = String(value);
-              // Replace base folder path with relative path
-              const channelName = this.channelNames.get(channelId);
-              if (channelName) {
-                const basePath = `${this.baseFolder}${channelName}`;
-                if (val === basePath) {
-                  val = ".";
-                } else if (val.startsWith(basePath + "/")) {
-                  val = val.replace(basePath + "/", "./");
-                }
-              }
-              return `${key}=${val}`;
-            })
-            .join(", ");
-          toolMessage += ` (${inputs})`;
-        }
-
-        const toolEmbed = new EmbedBuilder()
-          .setDescription(`⏳ ${toolMessage}`)
+        const groupEmbed = new EmbedBuilder()
+          .setDescription(labels.map((label: string) => `⏳ ${label}`).join("\n"))
           .setColor(0x0099FF); // Blue for tool calls
 
-        const sentMessage = await channel.send({ embeds: [toolEmbed] });
-        
-        // Track this tool call message for later updating
-        toolCalls.set(tool.id, {
-          message: sentMessage,
-          toolId: tool.id
+        const sentMessage = await channel.send({ embeds: [groupEmbed] });
+
+        toolUses.forEach((tool: any, index: number) => {
+          toolCalls.set(tool.id, {
+            message: sentMessage,
+            label: labels[index],
+            status: "pending",
+            siblingIds,
+          });
         });
       }
 
@@ -342,6 +333,32 @@ export class ClaudeManager {
     } catch (error) {
       console.error("Error sending assistant message:", error);
     }
+  }
+
+  private buildToolLabel(channelId: string, tool: any): string {
+    let toolMessage = `🔧 ${tool.name}`;
+
+    if (tool.input && Object.keys(tool.input).length > 0) {
+      const inputs = Object.entries(tool.input)
+        .map(([key, value]) => {
+          let val = String(value);
+          // Replace base folder path with relative path
+          const channelName = this.channelNames.get(channelId);
+          if (channelName) {
+            const basePath = `${this.baseFolder}${channelName}`;
+            if (val === basePath) {
+              val = ".";
+            } else if (val.startsWith(basePath + "/")) {
+              val = val.replace(basePath + "/", "./");
+            }
+          }
+          return `${key}=${val}`;
+        })
+        .join(", ");
+      toolMessage += ` (${inputs})`;
+    }
+
+    return toolMessage;
   }
 
   private async handleToolResultMessage(channelId: string, parsed: any): Promise<void> {
@@ -357,28 +374,22 @@ export class ClaudeManager {
       const toolCall = toolCalls.get(result.tool_use_id);
       if (toolCall && toolCall.message) {
         try {
-          // Get the first line of the result
-          const firstLine = result.content.split('\n')[0].trim();
-          const resultText = firstLine.length > 100 
-            ? firstLine.substring(0, 100) + "..."
-            : firstLine;
-          
-          // Get the current embed and update it
-          const currentEmbed = toolCall.message.embeds[0];
-          const originalDescription = currentEmbed.data.description.replace("⏳", "✅");
-          const isError = result.is_error === true;
-          
-          const updatedEmbed = new EmbedBuilder();
-          
-          if (isError) {
-            updatedEmbed
-              .setDescription(`❌ ${originalDescription.substring(2)}\n*${resultText}*`)
-              .setColor(0xFF0000); // Red for errors
-          } else {
-            updatedEmbed
-              .setDescription(`${originalDescription}\n*${resultText}*`)
-              .setColor(0x00FF00); // Green for completed
-          }
+          toolCall.status = result.is_error === true ? "error" : "success";
+
+          const description = toolCall.siblingIds
+            .map((id: string) => {
+              const sibling = toolCalls.get(id);
+              if (!sibling) return null;
+              const icon =
+                sibling.status === "pending" ? "⏳" : sibling.status === "error" ? "❌" : "✅";
+              return `${icon} ${sibling.label}`;
+            })
+            .filter((line: string | null): line is string => line !== null)
+            .join("\n");
+
+          const updatedEmbed = new EmbedBuilder()
+            .setDescription(description)
+            .setColor(0x0099FF); // Blue, fixed regardless of tool status
 
           await toolCall.message.edit({ embeds: [updatedEmbed] });
         } catch (error) {
