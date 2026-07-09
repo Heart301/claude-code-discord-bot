@@ -70,4 +70,17 @@ export class AttachmentStore {
 
     return { paths, skipped };
   }
+
+  cleanupChannel(channelId: string): void {
+    const dir = this.channelDirs.get(channelId);
+    if (!dir) return;
+
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      console.error(`Error cleaning up attachments for channel ${channelId}:`, error);
+    }
+
+    this.channelDirs.delete(channelId);
+  }
 }
