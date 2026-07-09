@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { escapeShellString, buildClaudeCommand } from '../../src/utils/shell.js';
 
 describe('escapeShellString', () => {
@@ -77,5 +77,49 @@ describe('buildClaudeCommand', () => {
     } finally {
       delete process.env.MCP_SERVER_PORT;
     }
+  });
+
+  describe('CLAUDE_PERMISSION_MODE override', () => {
+    afterEach(() => {
+      delete process.env.CLAUDE_PERMISSION_MODE;
+    });
+
+    it('should use --dangerously-skip-permissions and drop the MCP flags for "dangerous"', () => {
+      process.env.CLAUDE_PERMISSION_MODE = 'dangerous';
+      const command = buildClaudeCommand('/test/dir', 'hello world');
+      expect(command).toBe(
+        "cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose --dangerously-skip-permissions"
+      );
+    });
+
+    it('should use --permission-mode auto for "auto"', () => {
+      process.env.CLAUDE_PERMISSION_MODE = 'auto';
+      const command = buildClaudeCommand('/test/dir', 'hello world');
+      expect(command).toBe(
+        "cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose --permission-mode auto"
+      );
+    });
+
+    it('should use --permission-mode bypassPermissions for "bypass"', () => {
+      process.env.CLAUDE_PERMISSION_MODE = 'bypass';
+      const command = buildClaudeCommand('/test/dir', 'hello world');
+      expect(command).toBe(
+        "cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose --permission-mode bypassPermissions"
+      );
+    });
+
+    it('should preserve --resume placement with an override mode set', () => {
+      process.env.CLAUDE_PERMISSION_MODE = 'bypass';
+      const command = buildClaudeCommand('/test/dir', 'hello world', 'session-123');
+      expect(command).toBe(
+        "cd /test/dir && claude --resume session-123 --output-format stream-json --model sonnet -p 'hello world' --verbose --permission-mode bypassPermissions"
+      );
+    });
+
+    it('should ignore unrecognized values and fall back to the Discord approval flow', () => {
+      process.env.CLAUDE_PERMISSION_MODE = 'nonsense';
+      const command = buildClaudeCommand('/test/dir', 'hello world');
+      expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose ${mcpFlags}`);
+    });
   });
 });
