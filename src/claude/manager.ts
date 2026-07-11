@@ -27,7 +27,10 @@ export class ClaudeManager {
     }
   >();
 
-  constructor(private baseFolder: string) {
+  constructor(
+    private baseFolder: string,
+    private channelApiKeys: Map<string, string> = new Map()
+  ) {
     this.db = new DatabaseManager();
     // Clean up old sessions on startup
     this.db.cleanupOldSessions();
@@ -105,12 +108,19 @@ export class ClaudeManager {
     const commandString = buildClaudeCommand(workingDir, prompt, sessionId, discordContext);
     console.log(`Running command: ${commandString}`);
 
+    const spawnEnv: Record<string, string | undefined> = {
+      ...process.env,
+      SHELL: "/bin/bash",
+    };
+
+    const apiKeyOverride = this.channelApiKeys.get(channelName);
+    if (apiKeyOverride) {
+      spawnEnv.ANTHROPIC_API_KEY = apiKeyOverride;
+    }
+
     const claude = spawn("/bin/bash", ["-c", commandString], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        SHELL: "/bin/bash",
-      },
+      env: spawnEnv,
     });
 
     console.log(`Claude process spawned with PID: ${claude.pid}`);
