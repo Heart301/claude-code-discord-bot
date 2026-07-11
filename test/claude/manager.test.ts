@@ -184,6 +184,70 @@ describe('ClaudeManager', () => {
       expect(spawn).toHaveBeenCalledWith('/bin/bash', ['-c', expect.stringContaining('claude')], expect.any(Object));
       expect(mockProcess.stdin.end).toHaveBeenCalled();
     });
+
+    it('should override ANTHROPIC_API_KEY when the channel has a mapped key', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      const mockProcess = {
+        pid: 12345,
+        stdin: { end: vi.fn() },
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn()
+      };
+
+      const { spawn } = await import('child_process');
+      vi.mocked(spawn).mockReturnValue(mockProcess as any);
+
+      const channelApiKeys = new Map([['test-channel', 'sk-test-key']]);
+      const managerWithKeys = new ClaudeManager(mockBaseFolder, channelApiKeys);
+      managerWithKeys.reserveChannel('channel-1', undefined, {});
+
+      try {
+        await managerWithKeys.runClaudeCode('channel-1', 'test-channel', 'test prompt');
+      } catch (error) {
+        // Expected to fail due to mocking, just checking setup
+      }
+
+      expect(spawn).toHaveBeenCalledWith(
+        '/bin/bash',
+        ['-c', expect.stringContaining('claude')],
+        expect.objectContaining({
+          env: expect.objectContaining({ ANTHROPIC_API_KEY: 'sk-test-key' }),
+        })
+      );
+
+      managerWithKeys.destroy();
+    });
+
+    it('should not override ANTHROPIC_API_KEY when the channel has no mapped key', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      const mockProcess = {
+        pid: 12345,
+        stdin: { end: vi.fn() },
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn()
+      };
+
+      const { spawn } = await import('child_process');
+      vi.mocked(spawn).mockReturnValue(mockProcess as any);
+
+      manager.reserveChannel('channel-1', undefined, {});
+
+      try {
+        await manager.runClaudeCode('channel-1', 'test-channel', 'test prompt');
+      } catch (error) {
+        // Expected to fail due to mocking, just checking setup
+      }
+
+      const call = vi.mocked(spawn).mock.calls[0];
+      const options = call[2] as { env: Record<string, string | undefined> };
+      expect(options.env.ANTHROPIC_API_KEY).toBe(process.env.ANTHROPIC_API_KEY);
+    });
   });
 
   describe('tool call message merging', () => {
