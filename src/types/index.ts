@@ -55,4 +55,5 @@ export interface Config {
   discordToken: string;
   allowedUserId: string | undefined;
   baseFolder: string;
+  channelApiKeys: Map<string, string>;
 }
