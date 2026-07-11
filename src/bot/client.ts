@@ -6,11 +6,13 @@ import {
 import type { ClaudeManager } from '../claude/manager.js';
 import { CommandHandler } from './commands.js';
 import type { MCPPermissionServer } from '../mcp/server.js';
+import { AttachmentStore, formatAttachmentsForPrompt } from '../utils/attachments.js';
 
 export class DiscordBot {
   public client: Client; // Make public so MCP server can access it
   private commandHandler: CommandHandler;
   private mcpServer?: MCPPermissionServer;
+  private attachmentStore: AttachmentStore;
 
   constructor(
     private claudeManager: ClaudeManager,
@@ -26,6 +28,7 @@ export class DiscordBot {
     });
 
     this.commandHandler = new CommandHandler(claudeManager, allowedUserId);
+    this.attachmentStore = new AttachmentStore();
     this.setupEventHandlers();
   }
 
@@ -114,7 +117,40 @@ export class DiscordBot {
     if (channelName === "general") {
       return;
     }
-    
+
+    // Clean up attachments downloaded for the previous message in this channel
+    this.attachmentStore.cleanupChannel(channelId);
+
+    let prompt = message.content;
+    if (message.attachments && message.attachments.size > 0) {
+      const attachmentInputs = Array.from(message.attachments.values()).map((a: any) => ({
+        url: a.url,
+        name: a.name,
+        size: a.size,
+      }));
+
+      const { paths, skipped } = await this.attachmentStore.downloadAttachments(
+        channelId,
+        message.id,
+        attachmentInputs
+      );
+
+      prompt = formatAttachmentsForPrompt(prompt, paths);
+
+      if (skipped.length > 0) {
+        const warningEmbed = new EmbedBuilder()
+          .setTitle("⚠️ Warning")
+          .setDescription(skipped.map((s) => `${s.name}: ${s.reason}`).join("\n"))
+          .setColor(0xFFA500);
+
+        try {
+          await message.channel.send({ embeds: [warningEmbed] });
+        } catch (error) {
+          console.error("Error sending attachment warning message:", error);
+        }
+      }
+    }
+
     const sessionId = this.claudeManager.getSessionId(channelId);
 
     console.log(`Received message in channel: ${channelName} (${channelId})`);
@@ -154,7 +190,7 @@ export class DiscordBot {
 
       // Reserve the channel and run Claude Code
       this.claudeManager.reserveChannel(channelId, sessionId, reply);
-      await this.claudeManager.runClaudeCode(channelId, channelName, message.content, sessionId, discordContext);
+      await this.claudeManager.runClaudeCode(channelId, channelName, prompt, sessionId, discordContext);
     } catch (error) {
       console.error("Error running Claude Code:", error);
       
