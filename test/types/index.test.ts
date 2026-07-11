@@ -107,7 +107,8 @@ describe('Types', () => {
       const config: Config = {
         discordToken: "token-123",
         allowedUserId: "user-456",
-        baseFolder: "/test/folder"
+        baseFolder: "/test/folder",
+        channelApiKeys: new Map()
       };
       
       expect(config.discordToken).toBe("token-123");
