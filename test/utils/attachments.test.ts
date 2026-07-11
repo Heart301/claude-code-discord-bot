@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { sanitizeFilename, AttachmentStore } from '../../src/utils/attachments.js';
+import { sanitizeFilename, AttachmentStore, formatAttachmentsForPrompt } from '../../src/utils/attachments.js';
 import * as fs from 'fs';
 
 vi.mock('os', () => ({
@@ -189,5 +189,21 @@ describe('AttachmentStore.cleanupChannel', () => {
     ]);
 
     expect(() => store.cleanupChannel('chan-1')).not.toThrow();
+  });
+});
+
+describe('formatAttachmentsForPrompt', () => {
+  it('returns the original prompt unchanged when there are no paths', () => {
+    expect(formatAttachmentsForPrompt('look at this', [])).toBe('look at this');
+  });
+
+  it('appends a file list block when paths are present', () => {
+    const result = formatAttachmentsForPrompt('look at this', [
+      '/tmp/claude-discord-bot/chan-1/msg-1-a.png',
+      '/tmp/claude-discord-bot/chan-1/msg-1-b.png',
+    ]);
+    expect(result).toBe(
+      'look at this\n\n[附加檔案]\n- /tmp/claude-discord-bot/chan-1/msg-1-a.png\n- /tmp/claude-discord-bot/chan-1/msg-1-b.png'
+    );
   });
 });
