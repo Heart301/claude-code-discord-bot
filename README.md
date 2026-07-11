@@ -98,6 +98,14 @@ ALLOWED_USER_ID=your_discord_user_id_here
 # Example: if BASE_FOLDER=/Users/you/repos and channel is #my-project
 # The bot will operate in /Users/you/repos/my-project
 BASE_FOLDER=/path/to/your/repos
+
+# Optional: route specific Discord channels to a different Anthropic API key.
+# <NAME> can be any string; add as many pairs as you need.
+# Channels not listed in any group keep using the default ANTHROPIC_API_KEY / claude CLI login.
+#ANTHROPIC_API_KEY_GROUP1=sk-ant-xxxx
+#ANTHROPIC_API_KEY_GROUP1_CHANNELS=a,b,c
+#ANTHROPIC_API_KEY_GROUP2=sk-ant-yyyy
+#ANTHROPIC_API_KEY_GROUP2_CHANNELS=d,e,f
 ```
 
 ### 7. Prepare Your Repository Structure
