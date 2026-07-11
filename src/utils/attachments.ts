@@ -84,3 +84,9 @@ export class AttachmentStore {
     this.channelDirs.delete(channelId);
   }
 }
+
+export function formatAttachmentsForPrompt(prompt: string, paths: string[]): string {
+  if (paths.length === 0) return prompt;
+  const fileList = paths.map((p) => `- ${p}`).join("\n");
+  return `${prompt}\n\n[附加檔案]\n${fileList}`;
+}
