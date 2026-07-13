@@ -129,24 +129,35 @@ export class DiscordBot {
         size: a.size,
       }));
 
-      const { paths, skipped } = await this.attachmentStore.downloadAttachments(
-        channelId,
-        message.id,
-        attachmentInputs
-      );
+      try {
+        const { paths, skipped } = await this.attachmentStore.downloadAttachments(
+          channelId,
+          message.id,
+          attachmentInputs
+        );
 
-      prompt = formatAttachmentsForPrompt(prompt, paths);
+        prompt = formatAttachmentsForPrompt(prompt, paths);
 
-      if (skipped.length > 0) {
-        const warningEmbed = new EmbedBuilder()
-          .setTitle("⚠️ Warning")
-          .setDescription(skipped.map((s) => `${s.name}: ${s.reason}`).join("\n"))
-          .setColor(0xFFA500);
+        if (skipped.length > 0) {
+          const warningEmbed = new EmbedBuilder()
+            .setTitle("⚠️ Warning")
+            .setDescription(skipped.map((s) => `${s.name}: ${s.reason}`).join("\n"))
+            .setColor(0xFFA500);
 
+          try {
+            await message.channel.send({ embeds: [warningEmbed] });
+          } catch (error) {
+            console.error("Error sending attachment warning message:", error);
+          }
+        }
+      } catch (error) {
+        console.error("Error downloading attachments:", error);
+
+        const errorMessage = error instanceof Error ? error.message : String(error);
         try {
-          await message.channel.send({ embeds: [warningEmbed] });
-        } catch (error) {
-          console.error("Error sending attachment warning message:", error);
+          await message.channel.send(`Error downloading attachments: ${errorMessage}`);
+        } catch (sendError) {
+          console.error("Failed to send attachment error message:", sendError);
         }
       }
     }

@@ -155,5 +155,23 @@ describe('DiscordBot', () => {
         expect.objectContaining({ embeds: expect.any(Array) })
       );
     });
+
+    it('falls back to the unaugmented prompt and does not throw when downloadAttachments rejects', async () => {
+      mockDownloadAttachments.mockRejectedValue(new Error('disk full'));
+      const attachments = new Map([
+        ['a1', { url: 'https://cdn.discordapp.com/x.png', name: 'x.png', size: 1000 }],
+      ]);
+      const message = buildMessage({ attachments });
+
+      await expect((discordBot as any).handleMessage(message)).resolves.not.toThrow();
+
+      expect(mockClaudeManager.runClaudeCode).toHaveBeenCalledWith(
+        channelId,
+        'my-project',
+        'look at this',
+        undefined,
+        expect.anything()
+      );
+    });
   });
 });
