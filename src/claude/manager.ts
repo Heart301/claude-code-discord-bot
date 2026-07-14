@@ -9,6 +9,10 @@ import { DatabaseManager } from "../db/database.js";
 export class ClaudeManager {
   private db: DatabaseManager;
   private channelMessages = new Map<string, any>();
+  private channelLastAssistantMessage = new Map<
+    string,
+    { message: any; text: string }
+  >();
   private channelNames = new Map<string, string>();
   private channelProcesses = new Map<
     string,
@@ -44,6 +48,7 @@ export class ClaudeManager {
     this.killActiveProcess(channelId);
     this.db.clearSession(channelId);
     this.channelMessages.delete(channelId);
+    this.channelLastAssistantMessage.delete(channelId);
     this.channelNames.delete(channelId);
     this.channelProcesses.delete(channelId);
   }
@@ -294,7 +299,11 @@ export class ClaudeManager {
           .setDescription(content)
           .setColor(0x7289DA); // Discord blurple
 
-        await channel.send({ embeds: [assistantEmbed] });
+        const sentMessage = await channel.send({ embeds: [assistantEmbed] });
+        this.channelLastAssistantMessage.set(channelId, {
+          message: sentMessage,
+          text: content.trim(),
+        });
       }
 
       const channelName = this.channelNames.get(channelId) || "default";
@@ -314,6 +323,23 @@ export class ClaudeManager {
 
     const channel = this.channelMessages.get(channelId)?.channel;
     if (!channel) return;
+
+    // The final assistant text message duplicates the result text below;
+    // remove it so only the "Session Complete" message remains.
+    const lastAssistant = this.channelLastAssistantMessage.get(channelId);
+    if (
+      lastAssistant &&
+      parsed.subtype === "success" &&
+      "result" in parsed &&
+      lastAssistant.text === parsed.result.trim()
+    ) {
+      try {
+        await lastAssistant.message.delete();
+      } catch (error) {
+        console.error("Error deleting duplicate assistant message:", error);
+      }
+    }
+    this.channelLastAssistantMessage.delete(channelId);
 
     // Create a final result embed
     const resultEmbed = new EmbedBuilder();
