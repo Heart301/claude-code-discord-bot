@@ -91,15 +91,13 @@ describe('ClaudeManager', () => {
   });
 
   describe('setDiscordMessage', () => {
-    it('should set discord message and initialize tool call tracking', () => {
+    it('should set discord message', () => {
       const mockMessage = { edit: vi.fn() };
       manager.setDiscordMessage('channel-1', mockMessage);
 
       const channelMessages = (manager as any).channelMessages;
-      const channelToolCalls = (manager as any).channelToolCalls;
 
       expect(channelMessages.get('channel-1')).toBe(mockMessage);
-      expect(channelToolCalls.get('channel-1')).toEqual(new Map());
     });
   });
 
@@ -250,7 +248,7 @@ describe('ClaudeManager', () => {
     });
   });
 
-  describe('tool call message merging', () => {
+  describe('tool call messages', () => {
     let mockChannel: any;
 
     beforeEach(() => {
@@ -268,25 +266,7 @@ describe('ClaudeManager', () => {
       } as any;
     }
 
-    function toolResultMessage(results: Array<{ tool_use_id: string; content: string; is_error?: boolean }>) {
-      return {
-        type: 'user',
-        session_id: 'session-1',
-        message: {
-          content: results.map((r) => ({
-            type: 'tool_result',
-            tool_use_id: r.tool_use_id,
-            content: r.content,
-            is_error: r.is_error,
-          })),
-        },
-      } as any;
-    }
-
-    it('sends a single message for multiple tool_use calls in one assistant reply', async () => {
-      const sentMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      mockChannel.send.mockResolvedValue(sentMessage);
-
+    it('does not send anything to Discord for an assistant reply that only contains tool_use', async () => {
       await (manager as any).handleAssistantMessage(
         'channel-1',
         toolUseMessage([
@@ -294,53 +274,19 @@ describe('ClaudeManager', () => {
           { id: 'tool-2', name: 'Bash', input: { command: 'ls' } },
         ])
       );
+
+      expect(mockChannel.send).not.toHaveBeenCalled();
+    });
+
+    it('still sends the text content when an assistant reply mixes text and tool_use', async () => {
+      const message = toolUseMessage([{ id: 'tool-1', name: 'Read', input: { file_path: 'foo.ts' } }]);
+      message.message.content.unshift({ type: 'text', text: 'checking the file' });
+
+      await (manager as any).handleAssistantMessage('channel-1', message);
 
       expect(mockChannel.send).toHaveBeenCalledTimes(1);
       const sentEmbed = mockChannel.send.mock.calls[0][0].embeds[0];
-      expect(sentEmbed.data.description).toContain('⏳ 🔧 Read (file_path=foo.ts)');
-      expect(sentEmbed.data.description).toContain('⏳ 🔧 Bash (command=ls)');
-    });
-
-    it('updates only the affected line when a tool result arrives, without sending a new message', async () => {
-      const sentMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      mockChannel.send.mockResolvedValue(sentMessage);
-
-      await (manager as any).handleAssistantMessage(
-        'channel-1',
-        toolUseMessage([
-          { id: 'tool-1', name: 'Read', input: { file_path: 'foo.ts' } },
-          { id: 'tool-2', name: 'Bash', input: { command: 'ls' } },
-        ])
-      );
-
-      await (manager as any).handleToolResultMessage(
-        'channel-1',
-        toolResultMessage([{ tool_use_id: 'tool-1', content: 'file contents' }])
-      );
-
-      expect(mockChannel.send).toHaveBeenCalledTimes(1);
-      expect(sentMessage.edit).toHaveBeenCalledTimes(1);
-      const updatedDescription = sentMessage.edit.mock.calls[0]![0].embeds[0].data.description;
-      expect(updatedDescription).toContain('✅ 🔧 Read (file_path=foo.ts)');
-      expect(updatedDescription).toContain('⏳ 🔧 Bash (command=ls)');
-    });
-
-    it('marks a tool as failed with ❌ when the result is an error', async () => {
-      const sentMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      mockChannel.send.mockResolvedValue(sentMessage);
-
-      await (manager as any).handleAssistantMessage(
-        'channel-1',
-        toolUseMessage([{ id: 'tool-1', name: 'Bash', input: { command: 'false' } }])
-      );
-
-      await (manager as any).handleToolResultMessage(
-        'channel-1',
-        toolResultMessage([{ tool_use_id: 'tool-1', content: 'command failed', is_error: true }])
-      );
-
-      const updatedDescription = sentMessage.edit.mock.calls[0]![0].embeds[0].data.description;
-      expect(updatedDescription).toContain('❌ 🔧 Bash (command=false)');
+      expect(sentEmbed.data.description).toBe('checking the file');
     });
   });
 

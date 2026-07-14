@@ -6,17 +6,9 @@ import type { SDKMessage } from "../types/index.js";
 import { buildClaudeCommand, type DiscordContext } from "../utils/shell.js";
 import { DatabaseManager } from "../db/database.js";
 
-type ToolCallEntry = {
-  message: any;
-  label: string;
-  status: "pending" | "success" | "error";
-  siblingIds: string[];
-};
-
 export class ClaudeManager {
   private db: DatabaseManager;
   private channelMessages = new Map<string, any>();
-  private channelToolCalls = new Map<string, Map<string, ToolCallEntry>>();
   private channelNames = new Map<string, string>();
   private channelProcesses = new Map<
     string,
@@ -52,14 +44,12 @@ export class ClaudeManager {
     this.killActiveProcess(channelId);
     this.db.clearSession(channelId);
     this.channelMessages.delete(channelId);
-    this.channelToolCalls.delete(channelId);
     this.channelNames.delete(channelId);
     this.channelProcesses.delete(channelId);
   }
 
   setDiscordMessage(channelId: string, message: any): void {
     this.channelMessages.set(channelId, message);
-    this.channelToolCalls.set(channelId, new Map());
   }
 
   reserveChannel(
@@ -186,8 +176,6 @@ export class ClaudeManager {
 
             if (parsed.type === "assistant" && parsed.message.content) {
               this.handleAssistantMessage(channelId, parsed).catch(console.error);
-            } else if (parsed.type === "user" && parsed.message.content) {
-              this.handleToolResultMessage(channelId, parsed).catch(console.error);
             } else if (parsed.type === "result") {
               this.handleResultMessage(channelId, parsed).then(() => {
                 clearTimeout(timeout);
@@ -298,13 +286,6 @@ export class ClaudeManager {
       ? parsed.message.content.find((c: any) => c.type === "text")?.text || ""
       : parsed.message.content;
 
-    // Check for tool use in the message
-    const toolUses = Array.isArray(parsed.message.content)
-      ? parsed.message.content.filter((c: any) => c.type === "tool_use")
-      : [];
-
-    const toolCalls = this.channelToolCalls.get(channelId) || new Map();
-
     try {
       // If there's text content, send an assistant message
       if (content && content.trim()) {
@@ -312,100 +293,14 @@ export class ClaudeManager {
           .setTitle("💬 Claude")
           .setDescription(content)
           .setColor(0x7289DA); // Discord blurple
-        
+
         await channel.send({ embeds: [assistantEmbed] });
-      }
-      
-      // If there are tool uses, merge them into a single message for this reply
-      if (toolUses.length > 0) {
-        const labels = toolUses.map((tool: any) => this.buildToolLabel(channelId, tool));
-        const siblingIds = toolUses.map((tool: any) => tool.id);
-
-        const groupEmbed = new EmbedBuilder()
-          .setDescription(labels.map((label: string) => `⏳ ${label}`).join("\n"))
-          .setColor(0x0099FF); // Blue for tool calls
-
-        const sentMessage = await channel.send({ embeds: [groupEmbed] });
-
-        toolUses.forEach((tool: any, index: number) => {
-          toolCalls.set(tool.id, {
-            message: sentMessage,
-            label: labels[index],
-            status: "pending",
-            siblingIds,
-          });
-        });
       }
 
       const channelName = this.channelNames.get(channelId) || "default";
       this.db.setSession(channelId, parsed.session_id, channelName);
-      this.channelToolCalls.set(channelId, toolCalls);
     } catch (error) {
       console.error("Error sending assistant message:", error);
-    }
-  }
-
-  private buildToolLabel(channelId: string, tool: any): string {
-    let toolMessage = `🔧 ${tool.name}`;
-
-    if (tool.input && Object.keys(tool.input).length > 0) {
-      const inputs = Object.entries(tool.input)
-        .map(([key, value]) => {
-          let val = String(value);
-          // Replace base folder path with relative path
-          const channelName = this.channelNames.get(channelId);
-          if (channelName) {
-            const basePath = `${this.baseFolder}${channelName}`;
-            if (val === basePath) {
-              val = ".";
-            } else if (val.startsWith(basePath + "/")) {
-              val = val.replace(basePath + "/", "./");
-            }
-          }
-          return `${key}=${val}`;
-        })
-        .join(", ");
-      toolMessage += ` (${inputs})`;
-    }
-
-    return toolMessage;
-  }
-
-  private async handleToolResultMessage(channelId: string, parsed: any): Promise<void> {
-    const toolResults = Array.isArray(parsed.message.content)
-      ? parsed.message.content.filter((c: any) => c.type === "tool_result")
-      : [];
-
-    if (toolResults.length === 0) return;
-
-    const toolCalls = this.channelToolCalls.get(channelId) || new Map();
-
-    for (const result of toolResults) {
-      const toolCall = toolCalls.get(result.tool_use_id);
-      if (toolCall && toolCall.message) {
-        try {
-          toolCall.status = result.is_error === true ? "error" : "success";
-
-          const description = toolCall.siblingIds
-            .map((id: string) => {
-              const sibling = toolCalls.get(id);
-              if (!sibling) return null;
-              const icon =
-                sibling.status === "pending" ? "⏳" : sibling.status === "error" ? "❌" : "✅";
-              return `${icon} ${sibling.label}`;
-            })
-            .filter((line: string | null): line is string => line !== null)
-            .join("\n");
-
-          const updatedEmbed = new EmbedBuilder()
-            .setDescription(description)
-            .setColor(0x0099FF); // Blue, fixed regardless of tool status
-
-          await toolCall.message.edit({ embeds: [updatedEmbed] });
-        } catch (error) {
-          console.error("Error updating tool result message:", error);
-        }
-      }
     }
   }
 
