@@ -145,7 +145,7 @@ export class ClaudeManager {
 
     let buffer = "";
 
-    // Set a timeout for the Claude process (5 minutes)
+    // Set a timeout for the Claude process (20 minutes)
     const timeout = setTimeout(() => {
       console.log("Claude process timed out, killing it");
       claude.kill("SIGTERM");
@@ -154,12 +154,12 @@ export class ClaudeManager {
       if (channel) {
         const timeoutEmbed = new EmbedBuilder()
           .setTitle("⏰ Timeout")
-          .setDescription("Claude Code took too long to respond (5 minutes)")
+          .setDescription("Claude Code took too long to respond (20 minutes)")
           .setColor(0xFFD700); // Yellow for timeout
-        
+
         channel.send({ embeds: [timeoutEmbed] }).catch(console.error);
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 20 * 60 * 1000); // 20 minutes
 
     claude.stdout.on("data", (data) => {
       const rawData = data.toString();
