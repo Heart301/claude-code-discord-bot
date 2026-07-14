@@ -7,6 +7,14 @@ describe('validateConfig', () => {
   beforeEach(() => {
     vi.resetModules();
     process.env = { ...originalEnv };
+    // Strip any real ANTHROPIC_API_KEY* values loaded from the developer's
+    // local .env so tests stay hermetic and never leak real secrets into
+    // assertion output.
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('ANTHROPIC_API_KEY')) {
+        delete process.env[key];
+      }
+    }
   });
 
   afterEach(() => {
