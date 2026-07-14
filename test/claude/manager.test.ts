@@ -290,6 +290,78 @@ describe('ClaudeManager', () => {
     });
   });
 
+  describe('duplicate final message cleanup', () => {
+    let mockChannel: any;
+
+    beforeEach(() => {
+      mockChannel = { send: vi.fn() };
+      manager.setDiscordMessage('channel-1', { channel: mockChannel });
+    });
+
+    function assistantTextMessage(text: string) {
+      return {
+        type: 'assistant',
+        session_id: 'session-1',
+        message: { content: [{ type: 'text', text }] },
+      } as any;
+    }
+
+    function resultMessage(overrides: Partial<{ subtype: string; result: string; num_turns: number }> = {}) {
+      return {
+        type: 'result',
+        session_id: 'session-1',
+        subtype: 'success',
+        result: 'final answer',
+        num_turns: 3,
+        ...overrides,
+      } as any;
+    }
+
+    it('deletes the last assistant message when its text matches the result', async () => {
+      const sentAssistantMessage = { delete: vi.fn().mockResolvedValue(undefined) };
+      mockChannel.send.mockResolvedValueOnce(sentAssistantMessage).mockResolvedValueOnce({});
+
+      await (manager as any).handleAssistantMessage('channel-1', assistantTextMessage('final answer'));
+      await (manager as any).handleResultMessage('channel-1', resultMessage({ result: 'final answer' }));
+
+      expect(sentAssistantMessage.delete).toHaveBeenCalledTimes(1);
+      expect(mockChannel.send).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the last assistant message when its text differs from the result', async () => {
+      const sentAssistantMessage = { delete: vi.fn().mockResolvedValue(undefined) };
+      mockChannel.send.mockResolvedValueOnce(sentAssistantMessage).mockResolvedValueOnce({});
+
+      await (manager as any).handleAssistantMessage('channel-1', assistantTextMessage('intermediate update'));
+      await (manager as any).handleResultMessage('channel-1', resultMessage({ result: 'final answer' }));
+
+      expect(sentAssistantMessage.delete).not.toHaveBeenCalled();
+    });
+
+    it('does not attempt to delete anything when no assistant message was sent', async () => {
+      mockChannel.send.mockResolvedValueOnce({});
+
+      await expect(
+        (manager as any).handleResultMessage('channel-1', resultMessage({ result: 'final answer' }))
+      ).resolves.not.toThrow();
+
+      expect(mockChannel.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not delete the last assistant message for a failed session', async () => {
+      const sentAssistantMessage = { delete: vi.fn().mockResolvedValue(undefined) };
+      mockChannel.send.mockResolvedValueOnce(sentAssistantMessage).mockResolvedValueOnce({});
+
+      await (manager as any).handleAssistantMessage('channel-1', assistantTextMessage('final answer'));
+      await (manager as any).handleResultMessage(
+        'channel-1',
+        resultMessage({ subtype: 'error_during_execution', result: 'final answer' })
+      );
+
+      expect(sentAssistantMessage.delete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('database integration', () => {
     it('should initialize database and cleanup old sessions on construction', () => {
       // The cleanupOldSessions call happens during construction, so we need to check
