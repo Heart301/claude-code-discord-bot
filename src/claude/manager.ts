@@ -13,6 +13,10 @@ export class ClaudeManager {
     string,
     { message: any; text: string }
   >();
+  // Serializes handleAssistantMessage/handleResultMessage/handleInitMessage
+  // per channel so they run in stream order even though the stdout handler
+  // dispatches them without awaiting between lines.
+  private channelMessageChain = new Map<string, Promise<void>>();
   private channelNames = new Map<string, string>();
   private channelProcesses = new Map<
     string,
@@ -49,8 +53,18 @@ export class ClaudeManager {
     this.db.clearSession(channelId);
     this.channelMessages.delete(channelId);
     this.channelLastAssistantMessage.delete(channelId);
+    this.channelMessageChain.delete(channelId);
     this.channelNames.delete(channelId);
     this.channelProcesses.delete(channelId);
+  }
+
+  // Chains fn onto the previous queued message handler for this channel, so
+  // stream messages are handled in order without blocking stdout parsing.
+  private enqueueChannelMessage(channelId: string, fn: () => Promise<void>): Promise<void> {
+    const previous = this.channelMessageChain.get(channelId) || Promise.resolve();
+    const next = previous.then(fn).catch(console.error);
+    this.channelMessageChain.set(channelId, next);
+    return next;
   }
 
   setDiscordMessage(channelId: string, message: any): void {
@@ -180,17 +194,23 @@ export class ClaudeManager {
             console.log("Parsed message type:", parsed.type);
 
             if (parsed.type === "assistant" && parsed.message.content) {
-              this.handleAssistantMessage(channelId, parsed).catch(console.error);
+              this.enqueueChannelMessage(channelId, () =>
+                this.handleAssistantMessage(channelId, parsed)
+              );
             } else if (parsed.type === "result") {
-              this.handleResultMessage(channelId, parsed).then(() => {
+              this.enqueueChannelMessage(channelId, () =>
+                this.handleResultMessage(channelId, parsed)
+              ).then(() => {
                 clearTimeout(timeout);
                 claude.kill("SIGTERM");
                 this.channelProcesses.delete(channelId);
-              }).catch(console.error);
+              });
             } else if (parsed.type === "system") {
               console.log("System message:", parsed.subtype);
               if (parsed.subtype === "init") {
-                this.handleInitMessage(channelId, parsed).catch(console.error);
+                this.enqueueChannelMessage(channelId, () =>
+                  this.handleInitMessage(channelId, parsed)
+                );
               }
               const channelName = this.channelNames.get(channelId) || "default";
               this.db.setSession(channelId, parsed.session_id, channelName);

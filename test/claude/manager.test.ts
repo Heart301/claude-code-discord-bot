@@ -360,6 +360,47 @@ describe('ClaudeManager', () => {
 
       expect(sentAssistantMessage.delete).not.toHaveBeenCalled();
     });
+
+    it('deletes the duplicate assistant message when the CLI flushes the assistant and result lines in the same stdout chunk', async () => {
+      // runClaudeCode dispatches handleAssistantMessage/handleResultMessage
+      // without awaiting between lines, so this reproduces the real dispatch
+      // order instead of the artificially-sequenced calls above.
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      const sentAssistantMessage = { delete: vi.fn().mockResolvedValue(undefined) };
+      mockChannel.send.mockResolvedValueOnce(sentAssistantMessage).mockResolvedValueOnce({});
+
+      const mockProcess = {
+        pid: 1,
+        stdin: { end: vi.fn() },
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+      };
+
+      const { spawn } = await import('child_process');
+      vi.mocked(spawn).mockReturnValue(mockProcess as any);
+
+      manager.reserveChannel('channel-1', undefined, {});
+      await manager.runClaudeCode('channel-1', 'test-channel', 'test prompt');
+
+      const dataHandler = mockProcess.stdout.on.mock.calls.find(
+        (call: any[]) => call[0] === 'data'
+      )?.[1];
+      expect(dataHandler).toBeDefined();
+
+      const assistantLine = JSON.stringify(assistantTextMessage('final answer'));
+      const resultLine = JSON.stringify(resultMessage({ result: 'final answer' }));
+      dataHandler(Buffer.from(`${assistantLine}\n${resultLine}\n`));
+
+      // Flush the microtask/macrotask queue so any chained async work settles.
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(sentAssistantMessage.delete).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('database integration', () => {
