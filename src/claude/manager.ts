@@ -162,8 +162,8 @@ export class ClaudeManager {
       const channel = this.channelMessages.get(channelId)?.channel;
       if (channel) {
         const timeoutEmbed = new EmbedBuilder()
-          .setTitle("⏰ Timeout")
-          .setDescription("Claude Code took too long to respond (20 minutes)")
+          .setTitle("⏰ 逾時")
+          .setDescription("Claude Code 回應時間過長（超過 20 分鐘）")
           .setColor(0xFFD700); // Yellow for timeout
 
         channel.send({ embeds: [timeoutEmbed] }).catch(console.error);
@@ -233,8 +233,8 @@ export class ClaudeManager {
         const channel = this.channelMessages.get(channelId)?.channel;
         if (channel) {
           const errorEmbed = new EmbedBuilder()
-            .setTitle("❌ Claude Code Failed")
-            .setDescription(`Process exited with code: ${code}`)
+            .setTitle("❌ Claude Code 執行失敗")
+            .setDescription(`程序結束，代碼：${code}`)
             .setColor(0xFF0000); // Red for error
           
           channel.send({ embeds: [errorEmbed] }).catch(console.error);
@@ -255,7 +255,7 @@ export class ClaudeManager {
         const channel = this.channelMessages.get(channelId)?.channel;
         if (channel) {
           const warningEmbed = new EmbedBuilder()
-            .setTitle("⚠️ Warning")
+            .setTitle("⚠️ 警告")
             .setDescription(stderrOutput.trim())
             .setColor(0xFFA500); // Orange for warnings
           
@@ -275,7 +275,7 @@ export class ClaudeManager {
       const channel = this.channelMessages.get(channelId)?.channel;
       if (channel) {
         const processErrorEmbed = new EmbedBuilder()
-          .setTitle("❌ Process Error")
+          .setTitle("❌ 程序錯誤")
           .setDescription(error.message)
           .setColor(0xFF0000); // Red for errors
         
@@ -289,8 +289,8 @@ export class ClaudeManager {
     if (!channel) return;
     
     const initEmbed = new EmbedBuilder()
-      .setTitle("🚀 Claude Code Session Started")
-      .setDescription(`**Working Directory:** ${parsed.cwd}\n**Model:** ${parsed.model}\n**Tools:** ${parsed.tools.length} available`)
+      .setTitle("🚀 Claude Code 工作階段已啟動")
+      .setDescription(`**工作目錄：** ${parsed.cwd}\n**模型：** ${parsed.model}\n**可用工具：** ${parsed.tools.length} 個`)
       .setColor(0x00FF00); // Green for init
     
     try {
@@ -365,17 +365,17 @@ export class ClaudeManager {
     const resultEmbed = new EmbedBuilder();
 
     if (parsed.subtype === "success") {
-      let description = "result" in parsed ? parsed.result : "Task completed";
-      description += `\n\n*Completed in ${parsed.num_turns} turns*`;
-      
+      let description = "result" in parsed ? parsed.result : "任務已完成";
+      description += `\n\n*共 ${parsed.num_turns} 個回合完成*`;
+
       resultEmbed
-        .setTitle("✅ Session Complete")
+        .setTitle("✅ 工作階段完成")
         .setDescription(description)
         .setColor(0x00FF00); // Green for success
     } else {
       resultEmbed
-        .setTitle("❌ Session Failed")
-        .setDescription(`Task failed: ${parsed.subtype}`)
+        .setTitle("❌ 工作階段失敗")
+        .setDescription(`任務失敗：${parsed.subtype}`)
         .setColor(0xFF0000); // Red for failure
     }
 
