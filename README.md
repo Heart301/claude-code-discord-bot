@@ -99,13 +99,18 @@ ALLOWED_USER_ID=your_discord_user_id_here
 # The bot will operate in /Users/you/repos/my-project
 BASE_FOLDER=/path/to/your/repos
 
-# Optional: route specific Discord channels to a different Anthropic API key.
-# <NAME> can be any string; add as many pairs as you need.
-# Channels not listed in any group keep using the default ANTHROPIC_API_KEY / claude CLI login.
-#ANTHROPIC_API_KEY_GROUP1=sk-ant-xxxx
-#ANTHROPIC_API_KEY_GROUP1_CHANNELS=a,b,c
-#ANTHROPIC_API_KEY_GROUP2=sk-ant-yyyy
-#ANTHROPIC_API_KEY_GROUP2_CHANNELS=d,e,f
+# Optional: route specific Discord channels to a different Anthropic API key
+# and/or GitHub token (e.g. a Fine-grained Personal Access Token scoped to
+# specific repos). <NAME> can be any string; the channel list is shared
+# across both token types so you only list channels once per group.
+# Each group needs at least one of _ANTHROPIC_API_KEY / _GITHUB_TOKEN set
+# (both is fine too). Channels not listed in any group keep using the
+# default ANTHROPIC_API_KEY / GITHUB_TOKEN / claude CLI login.
+#GROUP1_CHANNELS=a,b,c
+#GROUP1_ANTHROPIC_API_KEY=sk-ant-xxxx
+#GROUP1_GITHUB_TOKEN=github_pat_xxxx
+#GROUP2_CHANNELS=d,e,f
+#GROUP2_GITHUB_TOKEN=github_pat_yyyy
 ```
 
 ### 7. Prepare Your Repository Structure
