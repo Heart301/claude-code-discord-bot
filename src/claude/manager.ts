@@ -126,6 +126,16 @@ export class ClaudeManager {
       SHELL: "/bin/bash",
     };
 
+    // Strip raw per-group secrets (e.g. GROUP1_ANTHROPIC_API_KEY,
+    // GROUP1_GITHUB_TOKEN) so a spawned session can't read other channels'
+    // group tokens via printenv — only the resolved value for this channel
+    // should reach the subprocess.
+    for (const key of Object.keys(spawnEnv)) {
+      if (key.endsWith('_ANTHROPIC_API_KEY') || key.endsWith('_GITHUB_TOKEN')) {
+        delete spawnEnv[key];
+      }
+    }
+
     const apiKeyOverride = this.channelApiKeys.get(channelName);
     if (apiKeyOverride) {
       spawnEnv.ANTHROPIC_API_KEY = apiKeyOverride;
