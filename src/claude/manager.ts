@@ -32,7 +32,8 @@ export class ClaudeManager {
 
   constructor(
     private baseFolder: string,
-    private channelApiKeys: Map<string, string> = new Map()
+    private channelApiKeys: Map<string, string> = new Map(),
+    private channelGithubTokens: Map<string, string> = new Map()
   ) {
     this.db = new DatabaseManager();
     // Clean up old sessions on startup
@@ -128,6 +129,11 @@ export class ClaudeManager {
     const apiKeyOverride = this.channelApiKeys.get(channelName);
     if (apiKeyOverride) {
       spawnEnv.ANTHROPIC_API_KEY = apiKeyOverride;
+    }
+
+    const githubTokenOverride = this.channelGithubTokens.get(channelName);
+    if (githubTokenOverride) {
+      spawnEnv.GITHUB_TOKEN = githubTokenOverride;
     }
 
     const claude = spawn("/bin/bash", ["-c", commandString], {

@@ -108,7 +108,8 @@ describe('Types', () => {
         discordToken: "token-123",
         allowedUserId: "user-456",
         baseFolder: "/test/folder",
-        channelApiKeys: new Map()
+        channelApiKeys: new Map(),
+        channelGithubTokens: new Map()
       };
       
       expect(config.discordToken).toBe("token-123");
