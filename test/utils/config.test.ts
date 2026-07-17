@@ -1,17 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { validateConfig } from '../../src/utils/config.js';
+import { validateConfig, parseChannelGroups } from '../../src/utils/config.js';
 
 describe('validateConfig', () => {
   const originalEnv = process.env;
-  
+
   beforeEach(() => {
     vi.resetModules();
     process.env = { ...originalEnv };
-    // Strip any real ANTHROPIC_API_KEY* values loaded from the developer's
-    // local .env so tests stay hermetic and never leak real secrets into
-    // assertion output.
+    // Strip any real group-routing values loaded from the developer's local
+    // .env so tests stay hermetic and never leak real secrets into assertion
+    // output.
     for (const key of Object.keys(process.env)) {
-      if (key.startsWith('ANTHROPIC_API_KEY')) {
+      if (
+        key.endsWith('_CHANNELS') ||
+        key.endsWith('_ANTHROPIC_API_KEY') ||
+        key.endsWith('_GITHUB_TOKEN')
+      ) {
         delete process.env[key];
       }
     }
@@ -33,6 +37,7 @@ describe('validateConfig', () => {
       allowedUserId: 'test-user-id',
       baseFolder: '/test/folder',
       channelApiKeys: new Map(),
+      channelGithubTokens: new Map(),
     });
   });
 
@@ -68,6 +73,7 @@ describe('validateConfig', () => {
       allowedUserId: undefined,
       baseFolder: '/test/folder',
       channelApiKeys: new Map(),
+      channelGithubTokens: new Map(),
     });
     expect(warnSpy).toHaveBeenCalledWith(
       'ALLOWED_USER_ID is not set - everyone in the channel can trigger the bot'
@@ -95,39 +101,70 @@ describe('validateConfig', () => {
   });
 });
 
-import { parseChannelApiKeys } from '../../src/utils/config.js';
-
-describe('parseChannelApiKeys', () => {
-  it('should parse two groups into a channel-to-key map', () => {
+describe('parseChannelGroups', () => {
+  it('should map a group with both tokens set into both maps', () => {
     const env = {
-      ANTHROPIC_API_KEY_GROUP1: 'sk-group1',
-      ANTHROPIC_API_KEY_GROUP1_CHANNELS: 'a, b,c',
-      ANTHROPIC_API_KEY_GROUP2: 'sk-group2',
-      ANTHROPIC_API_KEY_GROUP2_CHANNELS: 'd,e,f',
+      GROUP1_CHANNELS: 'a, b,c',
+      GROUP1_ANTHROPIC_API_KEY: 'sk-group1',
+      GROUP1_GITHUB_TOKEN: 'gh-group1',
     };
 
-    const result = parseChannelApiKeys(env);
+    const result = parseChannelGroups(env);
 
-    expect(result).toEqual(
+    expect(result.channelApiKeys).toEqual(
       new Map([
         ['a', 'sk-group1'],
         ['b', 'sk-group1'],
         ['c', 'sk-group1'],
-        ['d', 'sk-group2'],
-        ['e', 'sk-group2'],
-        ['f', 'sk-group2'],
+      ])
+    );
+    expect(result.channelGithubTokens).toEqual(
+      new Map([
+        ['a', 'gh-group1'],
+        ['b', 'gh-group1'],
+        ['c', 'gh-group1'],
       ])
     );
   });
 
-  it('should return an empty map when no groups are configured', () => {
-    const result = parseChannelApiKeys({ DISCORD_TOKEN: 'x' });
-    expect(result).toEqual(new Map());
+  it('should only populate channelGithubTokens when the group has no ANTHROPIC_API_KEY', () => {
+    const env = {
+      GROUP2_CHANNELS: 'd,e',
+      GROUP2_GITHUB_TOKEN: 'gh-group2',
+    };
+
+    const result = parseChannelGroups(env);
+
+    expect(result.channelGithubTokens).toEqual(
+      new Map([
+        ['d', 'gh-group2'],
+        ['e', 'gh-group2'],
+      ])
+    );
+    expect(result.channelApiKeys).toEqual(new Map());
   });
 
-  it('should exit with error when a group has _CHANNELS but no matching key', () => {
+  it('should only populate channelApiKeys when the group has no GITHUB_TOKEN', () => {
     const env = {
-      ANTHROPIC_API_KEY_GROUP1_CHANNELS: 'a,b,c',
+      GROUP3_CHANNELS: 'f',
+      GROUP3_ANTHROPIC_API_KEY: 'sk-group3',
+    };
+
+    const result = parseChannelGroups(env);
+
+    expect(result.channelApiKeys).toEqual(new Map([['f', 'sk-group3']]));
+    expect(result.channelGithubTokens).toEqual(new Map());
+  });
+
+  it('should return empty maps when no groups are configured', () => {
+    const result = parseChannelGroups({ DISCORD_TOKEN: 'x' });
+    expect(result.channelApiKeys).toEqual(new Map());
+    expect(result.channelGithubTokens).toEqual(new Map());
+  });
+
+  it('should exit with error when a group has _CHANNELS but neither token is set', () => {
+    const env = {
+      GROUP1_CHANNELS: 'a,b,c',
     };
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
@@ -135,9 +172,9 @@ describe('parseChannelApiKeys', () => {
     });
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(() => parseChannelApiKeys(env)).toThrow('process.exit called');
+    expect(() => parseChannelGroups(env)).toThrow('process.exit called');
     expect(consoleSpy).toHaveBeenCalledWith(
-      'ANTHROPIC_API_KEY_GROUP1_CHANNELS is set but ANTHROPIC_API_KEY_GROUP1 is missing'
+      'GROUP1_CHANNELS is set but neither GROUP1_ANTHROPIC_API_KEY nor GROUP1_GITHUB_TOKEN is set'
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
 
@@ -147,19 +184,20 @@ describe('parseChannelApiKeys', () => {
 
   it('should warn and keep the alphabetically first group when a channel is duplicated', () => {
     const env = {
-      ANTHROPIC_API_KEY_GROUP1: 'sk-group1',
-      ANTHROPIC_API_KEY_GROUP1_CHANNELS: 'a',
-      ANTHROPIC_API_KEY_GROUP2: 'sk-group2',
-      ANTHROPIC_API_KEY_GROUP2_CHANNELS: 'a',
+      GROUP1_CHANNELS: 'a',
+      GROUP1_ANTHROPIC_API_KEY: 'sk-group1',
+      GROUP2_CHANNELS: 'a',
+      GROUP2_GITHUB_TOKEN: 'gh-group2',
     };
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const result = parseChannelApiKeys(env);
+    const result = parseChannelGroups(env);
 
-    expect(result.get('a')).toBe('sk-group1');
+    expect(result.channelApiKeys.get('a')).toBe('sk-group1');
+    expect(result.channelGithubTokens.has('a')).toBe(false);
     expect(warnSpy).toHaveBeenCalledWith(
-      'Channel "a" already has an API key group assigned; ignoring duplicate assignment from group "GROUP2"'
+      'Channel "a" already has a group assigned; ignoring duplicate assignment from group "GROUP2"'
     );
 
     warnSpy.mockRestore();
