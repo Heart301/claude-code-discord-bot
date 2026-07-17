@@ -403,6 +403,119 @@ describe('ClaudeManager', () => {
     });
   });
 
+  describe('idle timeout and absolute timeout', () => {
+    let mockChannel: any;
+    let mockProcess: any;
+
+    beforeEach(async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      mockChannel = { send: vi.fn().mockResolvedValue({}) };
+      manager.setDiscordMessage('channel-1', { channel: mockChannel });
+
+      mockProcess = {
+        pid: 1,
+        stdin: { end: vi.fn() },
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+      };
+
+      const { spawn } = await import('child_process');
+      vi.mocked(spawn).mockReturnValue(mockProcess as any);
+
+      manager.reserveChannel('channel-1', undefined, {});
+      await manager.runClaudeCode('channel-1', 'test-channel', 'test prompt');
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function getStdoutDataHandler() {
+      const call = mockProcess.stdout.on.mock.calls.find((c: any[]) => c[0] === 'data');
+      return call?.[1];
+    }
+
+    it('kills the process after 15 minutes with no stdout output', () => {
+      vi.advanceTimersByTime(15 * 60 * 1000);
+
+      expect(mockProcess.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(mockChannel.send).toHaveBeenCalledTimes(1);
+      const embed = mockChannel.send.mock.calls[0][0].embeds[0];
+      expect(embed.data.description).toBe('Claude Code 已 15 分鐘沒有任何回應');
+    });
+
+    it('resets the idle timer on any stdout output, even a partial non-JSON chunk', () => {
+      const dataHandler = getStdoutDataHandler();
+      expect(dataHandler).toBeDefined();
+
+      // Just under the original idle deadline, some output arrives (not a full JSON line).
+      vi.advanceTimersByTime(14 * 60 * 1000 + 59 * 1000);
+      dataHandler(Buffer.from('partial output, not a full line yet'));
+
+      // The original 15-minute-from-start deadline passes with no kill,
+      // because the data above reset the timer.
+      vi.advanceTimersByTime(2000);
+      expect(mockProcess.kill).not.toHaveBeenCalled();
+
+      // A further 15 minutes from the reset point with still no output
+      // triggers the idle timeout.
+      vi.advanceTimersByTime(15 * 60 * 1000);
+      expect(mockProcess.kill).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('triggers the absolute timeout instead of idle timeout when output keeps arriving but total runtime exceeds 60 minutes', () => {
+      const dataHandler = getStdoutDataHandler();
+
+      // Emit a small chunk every 10 minutes, well under the 15-minute idle
+      // deadline, for just under an hour.
+      for (let i = 0; i < 5; i++) {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+        dataHandler(Buffer.from('keep-alive chunk'));
+      }
+      expect(mockProcess.kill).not.toHaveBeenCalled();
+
+      // Crossing the 60-minute absolute cap kills the process even though
+      // output kept arriving.
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      expect(mockProcess.kill).toHaveBeenCalledWith('SIGTERM');
+      const embed = mockChannel.send.mock.calls[0][0].embeds[0];
+      expect(embed.data.description).toBe('Claude Code 執行時間已超過 60 分鐘上限');
+    });
+
+    it('clears both timers once the result message is handled, so no timeout fires afterward', async () => {
+      const dataHandler = getStdoutDataHandler();
+
+      const resultLine = JSON.stringify({
+        type: 'result',
+        session_id: 'session-1',
+        subtype: 'success',
+        result: 'done',
+        num_turns: 1,
+      });
+      dataHandler(Buffer.from(`${resultLine}\n`));
+
+      // Flush the microtask/macrotask queue so the queued handleResultMessage
+      // and its cleanup .then() settle (same pattern as the existing
+      // "duplicate final message cleanup" tests — setImmediate is real here
+      // because fake timers only fake setTimeout/clearTimeout).
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockProcess.kill).toHaveBeenCalledTimes(1);
+
+      mockChannel.send.mockClear();
+      vi.advanceTimersByTime(60 * 60 * 1000);
+
+      expect(mockProcess.kill).toHaveBeenCalledTimes(1);
+      expect(mockChannel.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('database integration', () => {
     it('should initialize database and cleanup old sessions on construction', () => {
       // The cleanupOldSessions call happens during construction, so we need to check

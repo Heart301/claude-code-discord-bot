@@ -6,6 +6,9 @@ import type { SDKMessage } from "../types/index.js";
 import { buildClaudeCommand, type DiscordContext } from "../utils/shell.js";
 import { DatabaseManager } from "../db/database.js";
 
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes with no stdout output
+const ABSOLUTE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes total runtime, regardless of output
+
 export class ClaudeManager {
   private db: DatabaseManager;
   private channelMessages = new Map<string, any>();
@@ -154,23 +157,40 @@ export class ClaudeManager {
 
     let buffer = "";
 
-    // Set a timeout for the Claude process (20 minutes)
-    const timeout = setTimeout(() => {
-      console.log("Claude process timed out, killing it");
+    let idleTimer: ReturnType<typeof setTimeout>;
+    let absoluteTimer: ReturnType<typeof setTimeout>;
+
+    const triggerTimeout = (kind: "idle" | "absolute") => {
+      console.log(`Claude process timed out (${kind}), killing it`);
+      clearTimeout(idleTimer);
+      clearTimeout(absoluteTimer);
       claude.kill("SIGTERM");
 
       const channel = this.channelMessages.get(channelId)?.channel;
       if (channel) {
         const timeoutEmbed = new EmbedBuilder()
           .setTitle("⏰ 逾時")
-          .setDescription("Claude Code 回應時間過長（超過 20 分鐘）")
+          .setDescription(
+            kind === "idle"
+              ? "Claude Code 已 15 分鐘沒有任何回應"
+              : "Claude Code 執行時間已超過 60 分鐘上限"
+          )
           .setColor(0xFFD700); // Yellow for timeout
 
         channel.send({ embeds: [timeoutEmbed] }).catch(console.error);
       }
-    }, 20 * 60 * 1000); // 20 minutes
+    };
+
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => triggerTimeout("idle"), IDLE_TIMEOUT_MS);
+    };
+
+    resetIdleTimer();
+    absoluteTimer = setTimeout(() => triggerTimeout("absolute"), ABSOLUTE_TIMEOUT_MS);
 
     claude.stdout.on("data", (data) => {
+      resetIdleTimer();
       const rawData = data.toString();
       console.log("Raw stdout data:", rawData);
       
@@ -201,7 +221,8 @@ export class ClaudeManager {
               this.enqueueChannelMessage(channelId, () =>
                 this.handleResultMessage(channelId, parsed)
               ).then(() => {
-                clearTimeout(timeout);
+                clearTimeout(idleTimer);
+                clearTimeout(absoluteTimer);
                 claude.kill("SIGTERM");
                 this.channelProcesses.delete(channelId);
               });
@@ -224,7 +245,8 @@ export class ClaudeManager {
 
     claude.on("close", (code) => {
       console.log(`Claude process exited with code ${code}`);
-      clearTimeout(timeout);
+      clearTimeout(idleTimer);
+      clearTimeout(absoluteTimer);
       // Ensure cleanup on process close
       this.channelProcesses.delete(channelId);
 
@@ -266,7 +288,8 @@ export class ClaudeManager {
 
     claude.on("error", (error) => {
       console.error("Claude process error:", error);
-      clearTimeout(timeout);
+      clearTimeout(idleTimer);
+      clearTimeout(absoluteTimer);
 
       // Clean up process tracking on error
       this.channelProcesses.delete(channelId);
