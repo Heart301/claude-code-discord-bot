@@ -18,6 +18,7 @@ GROUP1_ANTHROPIC_API_KEY=sk-ant-xxxx
 GROUP1_GITHUB_TOKEN=github_pat_xxxx
 
 GROUP2_CHANNELS=d,e,f
+GROUP2_ANTHROPIC_API_KEY=sk-ant-xxxx
 GROUP2_GITHUB_TOKEN=github_pat_yyyy
 ```
 
