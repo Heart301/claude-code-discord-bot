@@ -83,6 +83,31 @@ describe("DatabaseManager", () => {
     });
   });
 
+  describe("model settings", () => {
+    it("should return undefined when no model is set", () => {
+      mockGet.mockReturnValue(null);
+
+      const result = db.getModel("channel-1");
+
+      expect(result).toBeUndefined();
+      expect(mockGet).toHaveBeenCalledWith("channel-1");
+    });
+
+    it("should return the stored model", () => {
+      mockGet.mockReturnValue({ model: "opus" });
+
+      const result = db.getModel("channel-1");
+
+      expect(result).toBe("opus");
+    });
+
+    it("should store a model", () => {
+      db.setModel("channel-1", "opus");
+
+      expect(mockRun).toHaveBeenCalledWith("channel-1", "opus");
+    });
+  });
+
   describe("getAllSessions", () => {
     it("should return all sessions", () => {
       const mockSessions = [

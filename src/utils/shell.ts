@@ -27,7 +27,8 @@ export function buildClaudeCommand(
   workingDir: string,
   prompt: string,
   sessionId?: string,
-  discordContext?: DiscordContext
+  discordContext?: DiscordContext,
+  model: string = "sonnet"
 ): string {
   const escapedPrompt = escapeShellString(prompt);
   const overrideMode = getPermissionOverrideMode();
@@ -39,7 +40,7 @@ export function buildClaudeCommand(
     "--output-format",
     "stream-json",
     "--model",
-    "sonnet",
+    escapeShellString(model),
     "-p",
     escapedPrompt,
     "--verbose",

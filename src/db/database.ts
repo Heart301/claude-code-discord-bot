@@ -27,6 +27,15 @@ export class DatabaseManager {
         last_used INTEGER NOT NULL
       )
     `);
+
+    // Per-channel model override, kept separate from channel_sessions so
+    // clearing a session (/clear) doesn't also reset the chosen model.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_settings (
+        channel_id TEXT PRIMARY KEY,
+        model TEXT
+      )
+    `);
   }
 
   getSession(channelId: string): string | undefined {
@@ -46,6 +55,21 @@ export class DatabaseManager {
   clearSession(channelId: string): void {
     const stmt = this.db.query("DELETE FROM channel_sessions WHERE channel_id = ?");
     stmt.run(channelId);
+  }
+
+  getModel(channelId: string): string | undefined {
+    const stmt = this.db.query("SELECT model FROM channel_settings WHERE channel_id = ?");
+    const result = stmt.get(channelId) as { model: string | null } | null;
+    return result?.model ?? undefined;
+  }
+
+  setModel(channelId: string, model: string): void {
+    const stmt = this.db.query(`
+      INSERT INTO channel_settings (channel_id, model)
+      VALUES (?, ?)
+      ON CONFLICT(channel_id) DO UPDATE SET model = excluded.model
+    `);
+    stmt.run(channelId, model);
   }
 
   getAllSessions(): ChannelSession[] {

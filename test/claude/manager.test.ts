@@ -31,6 +31,8 @@ describe('ClaudeManager', () => {
       clearSession: vi.fn(),
       getAllSessions: vi.fn(),
       cleanupOldSessions: vi.fn(),
+      getModel: vi.fn(),
+      setModel: vi.fn(),
       close: vi.fn()
     };
     vi.mocked(DatabaseManager).mockImplementation(() => mockDb);
@@ -181,6 +183,38 @@ describe('ClaudeManager', () => {
       
       expect(spawn).toHaveBeenCalledWith('/bin/bash', ['-c', expect.stringContaining('claude')], expect.any(Object));
       expect(mockProcess.stdin.end).toHaveBeenCalled();
+    });
+
+    it('should pass the channel model override from the database to the spawned command', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      mockDb.getModel.mockReturnValue('opus');
+
+      const mockProcess = {
+        pid: 12345,
+        stdin: { end: vi.fn() },
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn()
+      };
+
+      const { spawn } = await import('child_process');
+      vi.mocked(spawn).mockReturnValue(mockProcess as any);
+
+      manager.reserveChannel('channel-1', undefined, {});
+
+      try {
+        await manager.runClaudeCode('channel-1', 'test-channel', 'test prompt');
+      } catch (error) {
+        // Expected to fail due to mocking, just checking setup
+      }
+
+      expect(mockDb.getModel).toHaveBeenCalledWith('channel-1');
+      expect(spawn).toHaveBeenCalledWith(
+        '/bin/bash',
+        ['-c', expect.stringContaining("--model 'opus'")],
+        expect.any(Object)
+      );
     });
 
     it('should override ANTHROPIC_API_KEY when the channel has a mapped key', async () => {
