@@ -56,4 +56,5 @@ export interface Config {
   allowedUserId: string | undefined;
   baseFolder: string;
   channelApiKeys: Map<string, string>;
+  channelGithubTokens: Map<string, string>;
 }

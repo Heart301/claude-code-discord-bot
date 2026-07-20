@@ -1,12 +1,12 @@
 import type { Config } from '../types/index.js';
 
-export function parseChannelApiKeys(
+export function parseChannelGroups(
   env: Record<string, string | undefined>
-): Map<string, string> {
+): { channelApiKeys: Map<string, string>; channelGithubTokens: Map<string, string> } {
   const groupNames = new Set<string>();
 
   for (const key of Object.keys(env)) {
-    const match = key.match(/^ANTHROPIC_API_KEY_(.+)_CHANNELS$/);
+    const match = key.match(/^(.+)_CHANNELS$/);
     if (match) {
       groupNames.add(match[1]);
     }
@@ -14,35 +14,45 @@ export function parseChannelApiKeys(
 
   const sortedGroupNames = Array.from(groupNames).sort();
   const channelApiKeys = new Map<string, string>();
+  const channelGithubTokens = new Map<string, string>();
+  const assignedChannels = new Set<string>();
 
   for (const groupName of sortedGroupNames) {
-    const apiKey = env[`ANTHROPIC_API_KEY_${groupName}`];
+    const apiKey = env[`${groupName}_ANTHROPIC_API_KEY`];
+    const githubToken = env[`${groupName}_GITHUB_TOKEN`];
 
-    if (!apiKey) {
+    if (!apiKey && !githubToken) {
       console.error(
-        `ANTHROPIC_API_KEY_${groupName}_CHANNELS is set but ANTHROPIC_API_KEY_${groupName} is missing`
+        `${groupName}_CHANNELS is set but neither ${groupName}_ANTHROPIC_API_KEY nor ${groupName}_GITHUB_TOKEN is set`
       );
       process.exit(1);
     }
 
-    const channelsValue = env[`ANTHROPIC_API_KEY_${groupName}_CHANNELS`] ?? '';
+    const channelsValue = env[`${groupName}_CHANNELS`] ?? '';
     const channelNames = channelsValue
       .split(',')
       .map((name) => name.trim())
       .filter((name) => name.length > 0);
 
     for (const channelName of channelNames) {
-      if (channelApiKeys.has(channelName)) {
+      if (assignedChannels.has(channelName)) {
         console.warn(
-          `Channel "${channelName}" already has an API key group assigned; ignoring duplicate assignment from group "${groupName}"`
+          `Channel "${channelName}" already has a group assigned; ignoring duplicate assignment from group "${groupName}"`
         );
         continue;
       }
-      channelApiKeys.set(channelName, apiKey);
+      assignedChannels.add(channelName);
+
+      if (apiKey) {
+        channelApiKeys.set(channelName, apiKey);
+      }
+      if (githubToken) {
+        channelGithubTokens.set(channelName, githubToken);
+      }
     }
   }
 
-  return channelApiKeys;
+  return { channelApiKeys, channelGithubTokens };
 }
 
 export function validateConfig(): Config {
@@ -66,12 +76,13 @@ export function validateConfig(): Config {
     process.exit(1);
   }
 
-  const channelApiKeys = parseChannelApiKeys(process.env);
+  const { channelApiKeys, channelGithubTokens } = parseChannelGroups(process.env);
 
   return {
     discordToken,
     allowedUserId,
     baseFolder,
     channelApiKeys,
+    channelGithubTokens,
   };
 }

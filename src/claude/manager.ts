@@ -32,7 +32,8 @@ export class ClaudeManager {
 
   constructor(
     private baseFolder: string,
-    private channelApiKeys: Map<string, string> = new Map()
+    private channelApiKeys: Map<string, string> = new Map(),
+    private channelGithubTokens: Map<string, string> = new Map()
   ) {
     this.db = new DatabaseManager();
     // Clean up old sessions on startup
@@ -125,9 +126,24 @@ export class ClaudeManager {
       SHELL: "/bin/bash",
     };
 
+    // Strip raw per-group secrets (e.g. GROUP1_ANTHROPIC_API_KEY,
+    // GROUP1_GITHUB_TOKEN) so a spawned session can't read other channels'
+    // group tokens via printenv — only the resolved value for this channel
+    // should reach the subprocess.
+    for (const key of Object.keys(spawnEnv)) {
+      if (key.endsWith('_ANTHROPIC_API_KEY') || key.endsWith('_GITHUB_TOKEN')) {
+        delete spawnEnv[key];
+      }
+    }
+
     const apiKeyOverride = this.channelApiKeys.get(channelName);
     if (apiKeyOverride) {
       spawnEnv.ANTHROPIC_API_KEY = apiKeyOverride;
+    }
+
+    const githubTokenOverride = this.channelGithubTokens.get(channelName);
+    if (githubTokenOverride) {
+      spawnEnv.GITHUB_TOKEN = githubTokenOverride;
     }
 
     const claude = spawn("/bin/bash", ["-c", commandString], {
