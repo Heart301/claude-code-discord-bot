@@ -29,23 +29,23 @@ describe('buildClaudeCommand', () => {
 
   it('should build basic command without session ID', () => {
     const command = buildClaudeCommand('/test/dir', 'hello world');
-    expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose ${mcpFlags}`);
+    expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model 'sonnet' -p 'hello world' --verbose ${mcpFlags}`);
   });
 
   it('should build command with session ID', () => {
     const command = buildClaudeCommand('/test/dir', 'hello world', 'session-123');
-    expect(command).toBe(`cd /test/dir && claude --resume session-123 --output-format stream-json --model sonnet -p 'hello world' --verbose ${mcpFlags}`);
+    expect(command).toBe(`cd /test/dir && claude --resume session-123 --output-format stream-json --model 'sonnet' -p 'hello world' --verbose ${mcpFlags}`);
   });
 
   it('should properly escape prompt with special characters', () => {
     const command = buildClaudeCommand('/test/dir', "don't use this");
-    expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model sonnet -p 'don'\\''t use this' --verbose ${mcpFlags}`);
+    expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model 'sonnet' -p 'don'\\''t use this' --verbose ${mcpFlags}`);
   });
 
   it('should handle complex prompts', () => {
     const prompt = "Fix the bug in 'config.js' and don't break anything";
     const command = buildClaudeCommand('/project/path', prompt, 'abc-123');
-    expect(command).toBe(`cd /project/path && claude --resume abc-123 --output-format stream-json --model sonnet -p 'Fix the bug in '\\''config.js'\\'' and don'\\''t break anything' --verbose ${mcpFlags}`);
+    expect(command).toBe(`cd /project/path && claude --resume abc-123 --output-format stream-json --model 'sonnet' -p 'Fix the bug in '\\''config.js'\\'' and don'\\''t break anything' --verbose ${mcpFlags}`);
   });
 
   it('should include Discord context as HTTP headers in the MCP config', () => {
@@ -69,6 +69,16 @@ describe('buildClaudeCommand', () => {
     expect(command).not.toContain('X-Discord-Message-Id');
   });
 
+  it('should use a custom model when provided', () => {
+    const command = buildClaudeCommand('/test/dir', 'hello world', undefined, undefined, 'opus');
+    expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model 'opus' -p 'hello world' --verbose ${mcpFlags}`);
+  });
+
+  it('should shell-escape a model name with special characters', () => {
+    const command = buildClaudeCommand('/test/dir', 'hi', undefined, undefined, "model; rm -rf /");
+    expect(command).toContain(`--model 'model; rm -rf /'`);
+  });
+
   it('should respect MCP_SERVER_PORT for the MCP server URL', () => {
     process.env.MCP_SERVER_PORT = '4500';
     try {
@@ -88,7 +98,7 @@ describe('buildClaudeCommand', () => {
       process.env.CLAUDE_PERMISSION_MODE = 'dangerous';
       const command = buildClaudeCommand('/test/dir', 'hello world');
       expect(command).toBe(
-        "cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose --dangerously-skip-permissions"
+        "cd /test/dir && claude --output-format stream-json --model 'sonnet' -p 'hello world' --verbose --dangerously-skip-permissions"
       );
     });
 
@@ -96,7 +106,7 @@ describe('buildClaudeCommand', () => {
       process.env.CLAUDE_PERMISSION_MODE = 'auto';
       const command = buildClaudeCommand('/test/dir', 'hello world');
       expect(command).toBe(
-        "cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose --permission-mode auto"
+        "cd /test/dir && claude --output-format stream-json --model 'sonnet' -p 'hello world' --verbose --permission-mode auto"
       );
     });
 
@@ -104,7 +114,7 @@ describe('buildClaudeCommand', () => {
       process.env.CLAUDE_PERMISSION_MODE = 'bypass';
       const command = buildClaudeCommand('/test/dir', 'hello world');
       expect(command).toBe(
-        "cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose --permission-mode bypassPermissions"
+        "cd /test/dir && claude --output-format stream-json --model 'sonnet' -p 'hello world' --verbose --permission-mode bypassPermissions"
       );
     });
 
@@ -112,14 +122,14 @@ describe('buildClaudeCommand', () => {
       process.env.CLAUDE_PERMISSION_MODE = 'bypass';
       const command = buildClaudeCommand('/test/dir', 'hello world', 'session-123');
       expect(command).toBe(
-        "cd /test/dir && claude --resume session-123 --output-format stream-json --model sonnet -p 'hello world' --verbose --permission-mode bypassPermissions"
+        "cd /test/dir && claude --resume session-123 --output-format stream-json --model 'sonnet' -p 'hello world' --verbose --permission-mode bypassPermissions"
       );
     });
 
     it('should ignore unrecognized values and fall back to the Discord approval flow', () => {
       process.env.CLAUDE_PERMISSION_MODE = 'nonsense';
       const command = buildClaudeCommand('/test/dir', 'hello world');
-      expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model sonnet -p 'hello world' --verbose ${mcpFlags}`);
+      expect(command).toBe(`cd /test/dir && claude --output-format stream-json --model 'sonnet' -p 'hello world' --verbose ${mcpFlags}`);
     });
   });
 });

@@ -5,6 +5,7 @@ import { EmbedBuilder } from "discord.js";
 import type { SDKMessage } from "../types/index.js";
 import { buildClaudeCommand, type DiscordContext } from "../utils/shell.js";
 import { DatabaseManager } from "../db/database.js";
+import { getAvailableModels, type AnthropicModel } from "../utils/models.js";
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes with no stdout output
 const ABSOLUTE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes total runtime, regardless of output
@@ -101,6 +102,32 @@ export class ClaudeManager {
     return this.db.getSession(channelId);
   }
 
+  getModel(channelId: string): string | undefined {
+    return this.db.getModel(channelId);
+  }
+
+  setModel(channelId: string, model: string): void {
+    this.db.setModel(channelId, model);
+  }
+
+  // Per-channel key override (<GROUP>_ANTHROPIC_API_KEY) takes priority over
+  // the process-wide key, matching the key used to actually run Claude Code.
+  private resolveApiKey(channelName: string): string | undefined {
+    return this.channelApiKeys.get(channelName) || process.env.ANTHROPIC_API_KEY;
+  }
+
+  async getAvailableModels(channelName: string): Promise<AnthropicModel[]> {
+    const apiKey = this.resolveApiKey(channelName);
+    if (!apiKey) return [];
+
+    try {
+      return await getAvailableModels(apiKey);
+    } catch (error) {
+      console.error("Error fetching available models:", error);
+      return [];
+    }
+  }
+
   async runClaudeCode(
     channelId: string,
     channelName: string,
@@ -118,7 +145,8 @@ export class ClaudeManager {
       throw new Error(`Working directory does not exist: ${workingDir}`);
     }
 
-    const commandString = buildClaudeCommand(workingDir, prompt, sessionId, discordContext);
+    const model = this.db.getModel(channelId);
+    const commandString = buildClaudeCommand(workingDir, prompt, sessionId, discordContext, model);
     console.log(`Running command: ${commandString}`);
 
     const spawnEnv: Record<string, string | undefined> = {
