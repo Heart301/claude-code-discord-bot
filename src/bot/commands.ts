@@ -18,8 +18,8 @@ const MODEL_MODAL_INPUT_ID = "model-name-input";
 // Used only when the Anthropic Models API is unreachable (no API key
 // resolvable for the channel, or the request fails).
 const FALLBACK_MODEL_CHOICES = [
-  { label: "Sonnet", value: "sonnet", description: "平衡速度與品質（預設）" },
-  { label: "Opus", value: "opus", description: "最高品質，速度較慢" },
+  { label: "Sonnet", value: "sonnet", description: "平衡速度與品質" },
+  { label: "Opus", value: "opus", description: "最高品質，速度較慢（預設）" },
   { label: "Haiku", value: "haiku", description: "最快速，適合簡單任務" },
 ];
 
