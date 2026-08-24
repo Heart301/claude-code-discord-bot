@@ -79,6 +79,18 @@ describe('buildClaudeCommand', () => {
     expect(command).toContain(`--model 'model; rm -rf /'`);
   });
 
+  it('should add --add-dir for each attachment directory', () => {
+    const command = buildClaudeCommand('/test/dir', 'hello', undefined, undefined, 'opus', [
+      '/tmp/claude-discord-bot/chan-1',
+    ]);
+    expect(command).toContain(`--add-dir '/tmp/claude-discord-bot/chan-1'`);
+  });
+
+  it('should omit --add-dir when there are no attachment directories', () => {
+    const command = buildClaudeCommand('/test/dir', 'hello');
+    expect(command).not.toContain('--add-dir');
+  });
+
   it('should respect MCP_SERVER_PORT for the MCP server URL', () => {
     process.env.MCP_SERVER_PORT = '4500';
     try {

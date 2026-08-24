@@ -109,7 +109,8 @@ describe('DiscordBot', () => {
         'my-project',
         'look at this',
         undefined,
-        expect.anything()
+        expect.anything(),
+        []
       );
     });
 
@@ -117,6 +118,7 @@ describe('DiscordBot', () => {
       mockDownloadAttachments.mockResolvedValue({
         paths: ['/tmp/claude-discord-bot/chan-1/msg-1-screenshot.png'],
         skipped: [],
+        dir: '/tmp/claude-discord-bot/chan-1',
       });
       const attachments = new Map([
         ['a1', { url: 'https://cdn.discordapp.com/x.png', name: 'screenshot.png', size: 1000 }],
@@ -135,7 +137,8 @@ describe('DiscordBot', () => {
         'my-project',
         'look at this\n\n[附加檔案]\n- /tmp/claude-discord-bot/chan-1/msg-1-screenshot.png',
         undefined,
-        expect.anything()
+        expect.anything(),
+        ['/tmp/claude-discord-bot/chan-1']
       );
     });
 
@@ -170,7 +173,8 @@ describe('DiscordBot', () => {
         'my-project',
         'look at this',
         undefined,
-        expect.anything()
+        expect.anything(),
+        []
       );
     });
   });

@@ -28,7 +28,8 @@ export function buildClaudeCommand(
   prompt: string,
   sessionId?: string,
   discordContext?: DiscordContext,
-  model: string = "opus"
+  model: string = "opus",
+  attachmentDirs: string[] = []
 ): string {
   const escapedPrompt = escapeShellString(prompt);
   const overrideMode = getPermissionOverrideMode();
@@ -45,6 +46,13 @@ export function buildClaudeCommand(
     escapedPrompt,
     "--verbose",
   ];
+
+  // Downloaded Discord attachments live outside the working directory
+  // (os.tmpdir()), so Claude Code's filesystem sandbox blocks Read on them
+  // unless their directory is explicitly allow-listed.
+  for (const dir of attachmentDirs) {
+    commandParts.push("--add-dir", escapeShellString(dir));
+  }
 
   if (overrideMode === "dangerous") {
     commandParts.push("--dangerously-skip-permissions");

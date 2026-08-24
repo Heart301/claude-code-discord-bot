@@ -133,7 +133,8 @@ export class ClaudeManager {
     channelName: string,
     prompt: string,
     sessionId?: string,
-    discordContext?: DiscordContext
+    discordContext?: DiscordContext,
+    attachmentDirs: string[] = []
   ): Promise<void> {
     // Store the channel name for path replacement
     this.channelNames.set(channelId, channelName);
@@ -146,7 +147,7 @@ export class ClaudeManager {
     }
 
     const model = this.db.getModel(channelId);
-    const commandString = buildClaudeCommand(workingDir, prompt, sessionId, discordContext, model);
+    const commandString = buildClaudeCommand(workingDir, prompt, sessionId, discordContext, model, attachmentDirs);
     console.log(`Running command: ${commandString}`);
 
     const spawnEnv: Record<string, string | undefined> = {

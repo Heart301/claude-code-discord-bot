@@ -24,6 +24,7 @@ export interface SkippedAttachment {
 export interface DownloadResult {
   paths: string[];
   skipped: SkippedAttachment[];
+  dir: string;
 }
 
 export class AttachmentStore {
@@ -68,7 +69,7 @@ export class AttachmentStore {
       }
     }
 
-    return { paths, skipped };
+    return { paths, skipped, dir };
   }
 
   cleanupChannel(channelId: string): void {

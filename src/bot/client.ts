@@ -122,6 +122,7 @@ export class DiscordBot {
     this.attachmentStore.cleanupChannel(channelId);
 
     let prompt = message.content;
+    const attachmentDirs: string[] = [];
     if (message.attachments && message.attachments.size > 0) {
       const attachmentInputs = Array.from(message.attachments.values()).map((a: any) => ({
         url: a.url,
@@ -130,12 +131,13 @@ export class DiscordBot {
       }));
 
       try {
-        const { paths, skipped } = await this.attachmentStore.downloadAttachments(
+        const { paths, skipped, dir } = await this.attachmentStore.downloadAttachments(
           channelId,
           message.id,
           attachmentInputs
         );
 
+        if (paths.length > 0) attachmentDirs.push(dir);
         prompt = formatAttachmentsForPrompt(prompt, paths);
 
         if (skipped.length > 0) {
@@ -201,7 +203,7 @@ export class DiscordBot {
 
       // Reserve the channel and run Claude Code
       this.claudeManager.reserveChannel(channelId, sessionId, reply);
-      await this.claudeManager.runClaudeCode(channelId, channelName, prompt, sessionId, discordContext);
+      await this.claudeManager.runClaudeCode(channelId, channelName, prompt, sessionId, discordContext, attachmentDirs);
     } catch (error) {
       console.error("Error running Claude Code:", error);
       
