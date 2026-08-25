@@ -7,6 +7,7 @@ vi.mock('os', () => ({
 }));
 
 vi.mock('fs', () => ({
+  mkdtempSync: vi.fn(() => '/tmp/claude-discord-bot'),
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
   rmSync: vi.fn(),

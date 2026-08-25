@@ -28,6 +28,11 @@ export interface DownloadResult {
 }
 
 export class AttachmentStore {
+  // A fixed, shared path under os.tmpdir() (e.g. /tmp/claude-discord-bot)
+  // can be pre-created by another local user or a stale process with
+  // permissions that lock this process out. mkdtempSync gives each run its
+  // own uniquely-named, privately-owned directory instead.
+  private readonly baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-discord-bot-"));
   private channelDirs = new Map<string, string>();
 
   async downloadAttachments(
@@ -35,7 +40,7 @@ export class AttachmentStore {
     messageId: string,
     attachments: AttachmentInput[]
   ): Promise<DownloadResult> {
-    const dir = path.join(os.tmpdir(), "claude-discord-bot", channelId);
+    const dir = path.join(this.baseDir, channelId);
     fs.mkdirSync(dir, { recursive: true });
     this.channelDirs.set(channelId, dir);
 
